@@ -3,3 +3,5 @@
 /models/
 /.idea/
 
+/build_pypy.sh
+/__pycache__/
