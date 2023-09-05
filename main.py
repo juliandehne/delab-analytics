@@ -1,17 +1,48 @@
+import numpy as np
 import pandas as pd
+from langdetect import detect
+from sentence_splitter import split_text_into_sentences
+
 from delab_robertarg import arg_prediction_batch
 from delab_sentiment import sentiment_scores
+# Define the custom aggregation function
+from delab_translation import translations
 
 
-def predict_argument(df):
-    argument_predictions = arg_prediction_batch(list(df.text))
+def default_agg(x):
+    """
+        For numeric columns: Compute the mean.
+        For non-numeric (text) columns:
+            If all values are the same, it will return the first value.
+            If there are multiple unique values, it will concatenate them.
+    :param x:
+    :return:
+    """
+
+    # If column is numeric
+    if np.issubdtype(x.dtype, np.number):
+        if x.nunique() == 1:
+            return x.iloc[0]
+        return x.mean()
+
+    # If column is non-numeric
+    else:
+        unique_vals = x.unique()
+        if len(unique_vals) == 1:
+            return unique_vals[0]
+        else:
+            return ' '.join(map(str, unique_vals))
+
+
+def predict_argument(df, text_column="text"):
+    argument_predictions = arg_prediction_batch(list(df[text_column]))
     argument_predictions = pd.DataFrame(argument_predictions, columns=["p_is_argument", "p_is_not_argument"])
     df = df.join(argument_predictions)
     return df
 
 
-def predict_sentiment(df):
-    texts = list(df.text)
+def predict_sentiment(df, text_column="text"):
+    texts = list(df[text_column])
     scores = sentiment_scores(texts)
     sentiment_data = pd.DataFrame.from_dict(scores)
     sentiment_data.reset_index(inplace=True, drop=True)
@@ -21,11 +52,48 @@ def predict_sentiment(df):
 
 
 def analyze(df: pd.DataFrame, scope="all"):
+    # check language first and foremost
+    if "language" not in df.columns:
+        df['language'] = df['text'].apply(detect)
+
+    # Replace any non-'en' or non-'de' languages with 'en' (we assume en or de for all)
+    df['language'] = df['language'].apply(lambda lang: lang if lang in ['en', 'de'] else 'en')
+
+    # 1. Split the 'text' column into multiple rows
+    # Split the 'text' column into multiple rows using the detected language
+    # Create a new dataframe with expanded rows while retaining all original columns
+    rows = []
+    for sentence_group, row in df.iterrows():
+        sentences = split_text_into_sentences(row['text'], row['language'])
+        for sentence in sentences:
+            new_row = row.copy()
+            new_row['sentence'] = sentence
+            new_row['sentence_group'] = sentence_group
+            rows.append(new_row)
+
+    sentences_df = pd.DataFrame(rows).reset_index(drop=True)
+
+    # Drop rows where 'text' column has NaN values
+    sentences_df.dropna(subset=['sentence'], inplace=True)
+
+    # Drop rows where 'text' column is an empty string or just whitespace
+    sentences_df = sentences_df[sentences_df['sentence'].str.strip() != ""]
+
+    # 2. Perform a couple of functions that are defined on sentences
     if scope == "argument_prediction":
-        df = predict_argument(df)
+        sentences_df = predict_argument(sentences_df, text_column="sentence")
     if scope == "sentiment":
-        df = predict_sentiment(df)
+        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
     if scope == "all":
-        df = predict_argument(df)
-        df = predict_sentiment(df)
-    return df
+        sentences_df = predict_argument(sentences_df, text_column="sentence")
+        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
+
+    # 3. Aggregate the results (For this example, let's say we concatenate the sentences back and sum the word counts)
+    agg_df = sentences_df.groupby('sentence_group').agg(default_agg).reset_index(drop=True)
+
+    if scope == "all" or scope == "translate":
+        agg_df = translations(agg_df)
+
+    # 4. perform functions that are defined on texts (probably topic detection for instance)
+
+    return agg_df
