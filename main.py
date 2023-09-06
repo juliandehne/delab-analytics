@@ -3,10 +3,73 @@ import pandas as pd
 from langdetect import detect
 from sentence_splitter import split_text_into_sentences
 
-from delab_robertarg import arg_predictions, arg_prediction_batch
+from delab_robertarg import arg_prediction_batch
 from delab_sentiment import sentiment_scores
 # Define the custom aggregation function
+from delab_topics import delab_topics
 from delab_translation import translations
+
+
+def analyze(df: pd.DataFrame, scope="all"):
+    assert "tree_id" in df.columns, "conversation_id needs to be named tree_id for grouping conversations"
+    assert "text" in df.columns , "rows must contain a text column"
+
+    limit_languages(df)
+
+    # 1. Split the 'text' column into multiple rows
+    # Split the 'text' column into multiple rows using the detected language
+    # Create a new dataframe with expanded rows while retaining all original columns
+    sentences_df = split_sentences(df)
+
+    # 2. Perform a couple of functions that are defined on sentences
+    if scope == "argument_prediction":
+        sentences_df = predict_argument(sentences_df, text_column="sentence")
+    if scope == "sentiment":
+        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
+    if scope == "all":
+        sentences_df = predict_argument(sentences_df, text_column="sentence")
+        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
+
+    # 3. Aggregate the results (For this example, let's say we concatenate the sentences back and sum the word counts)
+    agg_df = sentences_df.groupby('sentence_group').agg(default_agg).reset_index(drop=True)
+
+    done_translations = False
+    if scope == "translations" or scope == "all":
+        agg_df = translations(agg_df)
+        done_translations = True
+
+    # 4. perform functions that are defined on texts (probably topic detection for instance)
+    if scope == "topics" or scope == "all":
+        if not done_translations:
+            agg_df = translations(agg_df)
+        agg_df = delab_topics(agg_df, wikipedia="yes")
+
+    return agg_df
+
+
+def split_sentences(df):
+    rows = []
+    for sentence_group, row in df.iterrows():
+        sentences = split_text_into_sentences(row['text'], row['language'])
+        for sentence in sentences:
+            new_row = row.copy()
+            new_row['sentence'] = sentence
+            new_row['sentence_group'] = sentence_group
+            rows.append(new_row)
+    sentences_df = pd.DataFrame(rows).reset_index(drop=True)
+    # Drop rows where 'text' column has NaN values
+    sentences_df.dropna(subset=['sentence'], inplace=True)
+    # Drop rows where 'text' column is an empty string or just whitespace
+    sentences_df = sentences_df[sentences_df['sentence'].str.strip() != ""]
+    return sentences_df
+
+
+def limit_languages(df):
+    # check language first and foremost
+    if "language" not in df.columns:
+        df['language'] = df['text'].apply(detect)
+    # Replace any non-'en' or non-'de' languages with 'en' (we assume en or de for all)
+    df['language'] = df['language'].apply(lambda lang: lang if lang in ['en', 'de'] else 'en')
 
 
 def default_agg(x):
@@ -50,51 +113,3 @@ def predict_sentiment(df, text_column="text"):
     df.reset_index(inplace=True, drop=True)
     result = df.join(sentiment_data)
     return result
-
-
-def analyze(df: pd.DataFrame, scope="all"):
-    # check language first and foremost
-    if "language" not in df.columns:
-        df['language'] = df['text'].apply(detect)
-
-    # Replace any non-'en' or non-'de' languages with 'en' (we assume en or de for all)
-    df['language'] = df['language'].apply(lambda lang: lang if lang in ['en', 'de'] else 'en')
-
-    # 1. Split the 'text' column into multiple rows
-    # Split the 'text' column into multiple rows using the detected language
-    # Create a new dataframe with expanded rows while retaining all original columns
-    rows = []
-    for sentence_group, row in df.iterrows():
-        sentences = split_text_into_sentences(row['text'], row['language'])
-        for sentence in sentences:
-            new_row = row.copy()
-            new_row['sentence'] = sentence
-            new_row['sentence_group'] = sentence_group
-            rows.append(new_row)
-
-    sentences_df = pd.DataFrame(rows).reset_index(drop=True)
-
-    # Drop rows where 'text' column has NaN values
-    sentences_df.dropna(subset=['sentence'], inplace=True)
-
-    # Drop rows where 'text' column is an empty string or just whitespace
-    sentences_df = sentences_df[sentences_df['sentence'].str.strip() != ""]
-
-    # 2. Perform a couple of functions that are defined on sentences
-    if scope == "argument_prediction":
-        sentences_df = predict_argument(sentences_df, text_column="sentence")
-    if scope == "sentiment":
-        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
-    if scope == "all":
-        sentences_df = predict_argument(sentences_df, text_column="sentence")
-        sentences_df = predict_sentiment(sentences_df, text_column="sentence")
-
-    # 3. Aggregate the results (For this example, let's say we concatenate the sentences back and sum the word counts)
-    agg_df = sentences_df.groupby('sentence_group').agg(default_agg).reset_index(drop=True)
-
-    if scope == "translations" or scope == "all":
-        agg_df = translations(agg_df)
-
-    # 4. perform functions that are defined on texts (probably topic detection for instance)
-
-    return agg_df
