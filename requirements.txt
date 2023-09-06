@@ -10,7 +10,7 @@ cloud-tpu-client
 
 
 nltk~=3.8.1
-bertopic~=0.15.0
+bertopic==0.14.1
 transformers~=4.30.2
 torch~=2.0.1
 tqdm~=4.62.2

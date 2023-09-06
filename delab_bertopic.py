@@ -36,8 +36,7 @@ def init_topic_models():
     # modelPath = os.path.join(parentDirectory, "models/flan-t5-base/")
     modelPath = "google/flan-t5-base"
     # specify pipeline
-    prompt = "I have a topic described by the following keywords: [KEYWORDS]." \
-             " Based on the previous keywords, what is this topic about?"
+    prompt = "I have a topic described by the following keywords: [KEYWORDS]. Based on the previous keywords, what is this topic about?"
     generator = pipeline('text2text-generation', model=modelPath)
     representation_model = TextGeneration(generator, prompt)
     # specify parameters to update topic representation

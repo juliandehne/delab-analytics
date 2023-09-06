@@ -63,9 +63,9 @@ def delab_wikipedia(df):
         return processed
 
     # Processing text to obtain upos and lemma
-    processed_data = df['text'].apply(process_text)
-    df['lemma'] = [item[0] for sublist in processed_data for item in sublist]
-    df['upos'] = [item[1] for sublist in processed_data for item in sublist]
+    processed_data = df['text_en'].apply(process_text)
+    df['lemma'] = processed_data.apply(lambda x: [elem[0] for elem in x])
+    df['upos'] = processed_data.apply(lambda x: [elem[1] for elem in x])
 
     # Extract nouns
     df_nouns = df[df['upos'].str.contains("NOUN")]
