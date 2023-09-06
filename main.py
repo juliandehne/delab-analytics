@@ -3,7 +3,7 @@ import pandas as pd
 from langdetect import detect
 from sentence_splitter import split_text_into_sentences
 
-from delab_robertarg import arg_prediction_batch
+from delab_robertarg import arg_predictions, arg_prediction_batch
 from delab_sentiment import sentiment_scores
 # Define the custom aggregation function
 from delab_translation import translations
@@ -36,6 +36,7 @@ def default_agg(x):
 
 def predict_argument(df, text_column="text"):
     argument_predictions = arg_prediction_batch(list(df[text_column]))
+    # argument_predictions = arg_predictions(list(df[text_column]))
     argument_predictions = pd.DataFrame(argument_predictions, columns=["p_is_argument", "p_is_not_argument"])
     df = df.join(argument_predictions)
     return df
@@ -91,7 +92,7 @@ def analyze(df: pd.DataFrame, scope="all"):
     # 3. Aggregate the results (For this example, let's say we concatenate the sentences back and sum the word counts)
     agg_df = sentences_df.groupby('sentence_group').agg(default_agg).reset_index(drop=True)
 
-    if scope == "all" or scope == "translate":
+    if scope == "translations" or scope == "all":
         agg_df = translations(agg_df)
 
     # 4. perform functions that are defined on texts (probably topic detection for instance)
