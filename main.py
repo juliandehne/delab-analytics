@@ -19,29 +19,38 @@ def analyze(df: pd.DataFrame, scope="all"):
     # 1. Split the 'text' column into multiple rows
     # Split the 'text' column into multiple rows using the detected language
     # Create a new dataframe with expanded rows while retaining all original columns
+    print("1. Splitting Sentences")
     sentences_df = split_sentences(df)
 
     # 2. Perform a couple of functions that are defined on sentences
     if scope == "argument_prediction":
+        print("2.1 Argument mining")
         sentences_df = predict_argument(sentences_df, text_column="sentence")
     if scope == "sentiment":
+        print("2.2 Sentiment analysis")
         sentences_df = predict_sentiment(sentences_df, text_column="sentence")
     if scope == "all":
+        print("2.1 Argument mining")
         sentences_df = predict_argument(sentences_df, text_column="sentence")
+        print("2.2 Sentiment analysis")
         sentences_df = predict_sentiment(sentences_df, text_column="sentence")
 
     # 3. Aggregate the results (For this example, let's say we concatenate the sentences back and sum the word counts)
+    print("3. Aggregating Sentences")
     agg_df = sentences_df.groupby('sentence_group').agg(default_agg).reset_index(drop=True)
 
     done_translations = False
     if scope == "translations" or scope == "all":
+        print("4.1 doing Translations")
         agg_df = translations(agg_df)
         done_translations = True
 
     # 4. perform functions that are defined on texts (probably topic detection for instance)
     if scope == "topics" or scope == "all":
         if not done_translations:
+            print("4.1 doing Translations")
             agg_df = translations(agg_df)
+        print("4.2 computing topics")
         agg_df = delab_topics(agg_df, wikipedia="yes")
 
     return agg_df
