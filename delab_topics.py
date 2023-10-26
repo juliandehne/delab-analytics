@@ -15,6 +15,9 @@ def delab_topics(df, wikipedia="yes"):
 
     for tree_id in unique_tree_ids:
         df_agg = df[df['tree_id'] == tree_id]
+        if len(df_agg) < 5:
+            final_results.append(df_agg)
+            continue
 
         # Cleaning
         df_agg['text_en'] = df_agg['text_en'].str.replace(r"@.+?\b", "")
